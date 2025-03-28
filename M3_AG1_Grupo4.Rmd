@@ -1,0 +1,398 @@
+---
+title: 'MÓDULO 3: Gestión de Datos y Datos Digitales'
+author: 'Avalos Darwin & Trochez Alejandra '
+date: "28 de Marzo del 2025"
+output:
+  html_document:
+    df_print: paged
+  word_document: null
+subtitle: 'Países extremos en la implantación de Facebook Alumno: 11 & Alumna:46'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(pander)
+library(kableExtra)
+library(readr)
+library(tidyr)
+library(stringr)
+library(dplyr)
+library(ggplot2)
+library(DescTools) 
+library(moments) 
+library(stargazer)
+library(tidyverse)
+library(MASS)
+library(modelsummary)
+library(boot)
+
+options(knitr.kable.NA = '')
+```
+
+# Descripción de la tarea
+
+El objetivo de esta actividad consiste en analizar si hay países con niveles de implantación de Facebook que presenten valores extremos. Para ello, se utilizarán los datos y modelos calculados en la actividad 2. Por otro lado, se analiza el valor faltante observado y se pide proponer un valor imputado.
+
+Los datos a utilizar están en la tabla fb_long.csv (ver descripcion de la actividad M3_AI4). También, se presupone que el fichero ya contiene la variable “Facebook_por_num”.  F:/Alumno-15/mbdds_fc20/R/Data_Managament/Data_Managament/fb_long.csv
+
+Las tareas que te proponemos realizar son las siguientes:
+
+# EJERCICIO 1
+```{r}
+df_fb <- read_delim(
+  "C:/PERSONAL/Master IL3/mbdds_fc20/gestion_datos/www/fb_long.csv",
+  delim = ";",
+  locale = locale(decimal_mark = ",", grouping_mark = "."),
+  show_col_types = FALSE  # Ocultar mensaje de especificación
+)
+
+# Ver estructura del dataset
+str(df_fb)
+```
+## TAREA 1.1.
+Calcula la variable “Facebook_por_Internet”= “Porcentaje de usuarios de Facebook sobre el total de usuarios de internet” (para cada país y año). Presenta y comenta el summary de esta variable.
+
+
+```{r}
+# Cálculo de Facebook_por_num como porcentaje (0-100)
+df_fb <- df_fb %>%
+  mutate(Facebook_por_num = round((Facebook_num / poblacion_num) * 100, 2))
+head(df_fb)
+```
+
+
+```{r}
+df_fb <- df_fb %>% 
+  mutate(
+    Facebook_por_num = (Facebook_num / poblacion_num) * 100,
+    Facebook_por_Internet = (Facebook_por_num / Internet_por_num) * 100
+  )
+
+# Resumen estadístico
+summary(df_fb$Facebook_por_Internet)
+```
+En la variable Facebook_por_num - Porcentaje de usuarios de Facebook sobre el total de usuarios de internet se observa que presenta un dato faltante, resultado de la variable Internet_por_num que tiene un dato faltante (Facebook_por_num / Internet_por_num) * 100. Presenta un valor mínimo de 0.026%, este valor indica que en algún país solo ese porcentaje de los usuarios de internet están en Facebook, esto podría reflejar una penetración extremadamente baja de Facebook en ese país que en este caso es China. Presenta un valor máximo de 122.07%, este valor extremo sugiere que, en algún país, el número de usuarios de Facebook supera ampliamente el número de usuarios de internet reportado. Presenta una mediana de 55.19%, la mediana es el valor central de la distribución y representa que el 50% de los países tienen un porcentaje de usuarios de Facebook entre el 0.026% y el 55.19% . Esto implica que, en la mayoría de los países, aproximadamente poco más de la mitad de los usuarios de internet están en Facebook. Presenta una media de 50.94%, esta es ligeramente menor que la mediana, lo que sugiere que la distribución está sesgada hacia valores más bajos. Es decir, hay algunos países con valores muy altos que arrastran la media hacia arriba, aunque la mayoría de los países tienen valores más cercanos a la mediana. El 25% de los países tienen un porcentaje de usuarios de Facebook respecto a los usuarios de internet menor o igual al 25.82%. El 75% de los países tienen un porcentaje de usuarios de Facebook respecto a los usuarios de internet menor o igual al 71.19% . 
+
+```{r}
+# Identificar celdas vacías o inconsistentes
+df_fb %>%
+  filter(is.na(Facebook_por_Internet) | is.na(Internet_por_num) | is.na(poblacion_num))
+```
+
+```{r}
+# Crear columna inc_001 y eliminar registros inconsistentes
+df_fb <- df_fb %>%
+  mutate(
+    inc_001 = ifelse(Internet_por_num == 0, Internet_por_num, NA)
+  ) %>%
+  filter(Internet_por_num != 0)  # Elimina filas donde Internet_por_num era cero
+
+# Verificar resultados
+head(df_fb)
+```
+
+
+```{r}
+# Identificar celdas vacías o inconsistentes
+df_fb %>%
+  filter(is.na(Facebook_por_Internet) | is.na(Internet_por_num) | is.na(poblacion_num))
+```  
+```{r}
+# Mostrar resumen de las variables
+summary(df_fb)
+
+```
+
+
+## TAREA 1.2.
+Dibuja y comenta, mediante el boxplot, si hay (o no) países outliers respecto a la variable Facebook_por_Internet.
+
+
+```{r}
+# Cargar librerías necesarias
+library(ggplot2)
+library(dplyr)
+library(moments) # Para calcular curtosis y asimetría
+
+# Calcular estadísticas por año: mediana, media, desviación estándar, coeficiente de variación, min, max, Q1, Q3, curtosis, asimetría
+estadisticas <- df_fb %>%
+  group_by(anyo) %>%
+  summarise(
+    Mediana = median(Facebook_por_Internet, na.rm = TRUE),
+    Media = mean(Facebook_por_Internet, na.rm = TRUE),
+    Desv_Estandar = sd(Facebook_por_Internet, na.rm = TRUE),
+    Coef_Variacion = sd(Facebook_por_Internet, na.rm = TRUE) / mean(Facebook_por_Internet, na.rm = TRUE), # CV = SD / Mean
+    Min = min(Facebook_por_Internet, na.rm = TRUE),
+    Max = max(Facebook_por_Internet, na.rm = TRUE),
+    Q1 = quantile(Facebook_por_Internet, 0.25, na.rm = TRUE),
+    Q3 = quantile(Facebook_por_Internet, 0.75, na.rm = TRUE),
+    Curtosis = kurtosis(Facebook_por_Internet, na.rm = TRUE),
+    Asimetria = skewness(Facebook_por_Internet, na.rm = TRUE)
+  )
+
+# Mostrar estadísticas
+print(estadisticas)
+
+# Crear boxplot con ggplot2
+ggplot(df_fb, aes(x = as.factor(anyo), y = Facebook_por_Internet)) +
+  geom_boxplot(fill = "skyblue", alpha = 0.7, outlier.color = "red") +
+  theme_minimal() +
+  labs(title = "Porcentaje de usuarios de Facebook sobre usuarios de internet (2010-2018)",
+       x = "Año",
+       y = "Porcentaje de usuarios") +
+  geom_text(data = estadisticas, 
+            aes(label = paste("Media:", round(Media, 3), 
+                              "\nMediana:", round(Mediana, 3), 
+                              "\nDesv. Estándar:", round(Desv_Estandar, 3), 
+                              "\nCoef. Variación:", round(Coef_Variacion, 3), 
+                              "\nMínimo:", round(Min, 3), 
+                              "\nMáximo:", round(Max, 3), 
+                              "\nQ1:", round(Q1, 3), 
+                              "\nQ3:", round(Q3, 3), 
+                              "\nCurtosis:", round(Curtosis, 3), 
+                              "\nAsimetría:", round(Asimetria, 3))),
+            x = as.factor(unique(df_fb$anyo)), 
+            y = max(df_fb$Facebook_por_Internet, na.rm = TRUE), 
+            vjust = -0.5, hjust = 0.5, size = 3, color = "blue")
+```
+En el gráfico respecto a la variable Facebook_por_Internet para el año 2010 no se observa puntos outliers, mientras que para el año 2018 si se observan algunos países por debajo del límite inferior. Se generaron las medidas de las variables para tener más comprensión de la variable frente a cada año. 
+
+## TAREA 1.3.
+Ajusta, de nuevo, los modelos de la actividad 2 de Facebook_por_num sobre Internet_por_num separados por año. Dibuja el primer plot (es decir, plot(modelo,1)) del modelo de regresión de cada año. Comenta si observas países con valores outliers en 2010. ¿Y en 2018?
+Consejo: antes de ajustar los modelos, introduce, en el rowname del data frame, la concatenación del nombre, el país y el año.
+
+
+```{r}
+
+# Convertir el tibble a dataframe
+df_fb <- as.data.frame(df_fb)
+
+# Asignar nombres de fila
+df_fb$nombre_pais_anyo <- paste(df_fb$pais_r, df_fb$anyo)
+rownames(df_fb) <- df_fb$nombre_pais_anyo
+
+# Crear una columna con la concatenación de país y año en los rownames
+df_fb$nombre_pais_anyo <- paste(df_fb$pais_r, df_fb$anyo)
+rownames(df_fb) <- df_fb$nombre_pais_anyo
+
+# Filtrar datos para 2010 y 2018
+datos_2010 <- filter(df_fb, anyo == 2010)
+datos_2018 <- filter(df_fb, anyo == 2018)
+
+# Ajustar modelos de regresión lineal
+modelo_lineal_2010 <- lm(Facebook_por_num ~ Internet_por_num, data = datos_2010)
+modelo_lineal_2018 <- lm(Facebook_por_num ~ Internet_por_num, data = datos_2018)
+
+# Resumen de los modelos
+summary(modelo_lineal_2010)
+summary(modelo_lineal_2018)
+
+```
+
+Se generaron nuevamente los modelos con el dataset actual para cada año.
+
+```{r}
+# Gráficos de residuos vs ajustados para 2010 y 2018
+par(mfrow = c(1, 2)) # Para mostrar ambos gráficos en una misma fila
+plot(modelo_lineal_2010, which = 1, main = "Residuos vs Ajustados (2010)")
+plot(modelo_lineal_2018, which = 1, main = "Residuos vs Ajustados (2018)")
+
+```
+En los gráficos de residuos se observa para el año 2010 algunos países más alejados como Islandia que presenta un residuo muy alto y positivo, también se observa que Korea Rep y Japón tienen residuos, aunque no tan grandes como Islandia. En el año 2018, se observan los países China, Rusia y Ucrania, que aparecen por debajo de la línea de cero, con residuos negativos importantes. Estos puntos podrían ser considerados outliers o, como mínimo, observaciones con grandes residuos. 
+
+
+## TAREA 1.4. ¿Cuál puede ser la causa de la presencia de estos outliers en 2010? ¿Y en 2018?
+
+```{r}
+
+# Calcular residuos estandarizados
+residuos_estandarizados_2010 <- rstandard(modelo_lineal_2010)
+residuos_estandarizados_2018 <- rstandard(modelo_lineal_2018)
+
+# Crear un dataframe con los residuos estandarizados y los nombres de los países
+resultados_residuos_2010 <- data.frame(
+  pais = rownames(datos_2010),
+  residuo_estandarizado = residuos_estandarizados_2010
+)
+
+resultados_residuos_2018 <- data.frame(
+  pais = rownames(datos_2018),
+  residuo_estandarizado = residuos_estandarizados_2018
+)
+
+# Mostrar países con residuos estandarizados > 2 o < -2
+outliers_residuos_2010 <- resultados_residuos_2010[abs(resultados_residuos_2010$residuo_estandarizado) > 2, ]
+outliers_residuos_2018 <- resultados_residuos_2018[abs(resultados_residuos_2018$residuo_estandarizado) > 2, ]
+
+print(outliers_residuos_2010)
+print(outliers_residuos_2018)
+```
+
+Los outliers pueden deberse a circunstancias únicas de cada país, reflejan diferencias significativas en el uso de Facebook en relación con el acceso a internet, influenciadas por factores culturales, políticos y tecnológicos.  
+
+Realizamos una validación de los posibles países con datos outliers con el análisis de los residuos estandarizados donde identificamos para el año 2010: Islandia Residuo estandarizado = 3.85, se puede beber a que es un país pequeño con una alta penetración de internet y una población muy conectada a redes sociales. Japón Residuo estandarizado = -2.69, tiene una alta penetración de internet, pero el uso de facebook es relativamente bajo en comparación con otras plataformas locales. Korea Residuo estandarizado= -2.56, es un líder mundial en tecnología y conectividad, pero el uso de Facebook no era tan predominante en 2010. Para el año 2018 China Residuo estandarizado = -2.28, facebook está bloqueado en China debido a restricciones gubernamentales, en su lugar, se utilizan plataformas locales como WeChat, etc. Rusia Residuo estandarizado = -3.00, tiene una alta penetración de internet, pero el uso de facebook es menor en comparación con plataformas locales. Ucrania = Residuo estandarizado = -2.80, tiene una preferencia por redes sociales locales o regionales. Uzbekistán Residuo estandarizado = -2.09, tiene una penetración de internet relativamente baja en comparación con otros países, y el uso de facebook puede estar limitado por factores socioeconómicos. 
+
+## TAREA 1.5.
+A partir del plot 4 y 5 del modelo, comenta si los valores de D Cook indican la presencia de outliers con un impacto relevante (D Cook > 1), en el ajuste de la regresión.
+
+```{r}
+# Gráficos de Distancia de Cook para 2010 y 2018
+par(mfrow = c(1, 2)) # Para mostrar ambos gráficos en una misma fila
+
+# Gráfico 4: Distancia de Cook para 2010
+plot(modelo_lineal_2010, which = 4, main = "Distancia de Cook (2010)")
+
+# Gráfico 4: Distancia de Cook para 2018
+plot(modelo_lineal_2018, which = 4, main = "Distancia de Cook (2018)")
+```
+
+De acuerdo con lo observado en los gráficos, ningún país supera el umbral de 𝐷Cook > 1. Esto significa que no hay observaciones con un impacto lo suficientemente grande como para cambiar de forma drástica los coeficientes de la regresión. Sin embargo, algunos países como Islandia en el año 2010 y Ucrania en el año 2018 muestran valores de Cook superiores al resto, lo que indica cierta influencia sobre el modelo, a pesar de no ser un outlier crítico. 
+
+
+## EJERCICIO 1.6.
+Ajusta, ahora, los mismos modelos que en el punto 3, utilizando la versión robusta rlm de la librería MASS (algoritmo de los M-Estimadores). Presenta la comparación de los modelos lm y rlm mediante la función stargazer y comenta si observas cambios relevantes en los coeficientes del modelo respecto al modelo lm (algoritmo de mínimos cuadrados).
+
+```{r}
+# Solución correcta
+s <- c(TRUE, FALSE, NA)
+
+# Verificar si hay algún valor NA
+if (any(is.na(s))) {
+  print("Hay valores NA")
+}
+
+# Verificar si todos los valores son NA
+if (all(is.na(s))) {
+  print("Todos los valores son NA")
+}
+```
+```{r}
+# Verificar valores NA en las columnas relevantes
+if (any(is.na(datos_2010$Facebook_por_num)) || any(is.na(datos_2010$Internet_por_num))) {
+  stop("Hay valores NA en los datos de 2010. Limpia los datos antes de continuar.")
+}
+
+# Ajustar el modelo robusto 2010
+modelo_robusto_2010 <- MASS::rlm(Facebook_por_num ~ Internet_por_num, data = datos_2010)
+# Modelo robusto 2018 
+modelo_robusto_2018 <- rlm(Facebook_por_num ~ Internet_por_num, data = datos_2018)
+```
+
+
+```{r}
+# Función para verificar valores NA
+verificar_na <- function(x) {
+  if (any(is.na(x))) {
+    return("Hay valores NA")
+  } else {
+    return("No hay valores NA")
+  }
+}
+
+# Ejemplo de uso
+resultado <- verificar_na(datos_2010$Facebook_por_num)
+print(resultado)
+```
+
+
+```{r}
+# Resumen de los modelos lm
+summary(modelo_lineal_2010)
+summary(modelo_lineal_2018)
+
+# Resumen de los modelos rlm
+summary(modelo_robusto_2010)
+summary(modelo_robusto_2018)
+```
+No fue posible presentar la comparación de los modelos lm y rlm mediante la función stargazer, porque el modelo rlm no contiene todas las métricas necesarias para hacer el cuadro comparativo.  Por esta razón mostramos una tabla comparativa de los coeficientes y pendiente de los modelos. 
+
+
+```{r}
+# Extraer coeficientes de los modelos
+coef_lm_2010 <- coef(modelo_lineal_2010)
+coef_rlm_2010 <- coef(modelo_robusto_2010)
+
+coef_lm_2018 <- coef(modelo_lineal_2018)
+coef_rlm_2018 <- coef(modelo_robusto_2018)
+
+# Crear una tabla comparativa
+tabla_comparativa <- data.frame(
+  Modelo = c("LM 2010", "RLM 2010", "LM 2018", "RLM 2018"),
+  Intercepto = c(coef_lm_2010[1], coef_rlm_2010[1], coef_lm_2018[1], coef_rlm_2018[1]),
+  Pendiente = c(coef_lm_2010[2], coef_rlm_2010[2], coef_lm_2018[2], coef_rlm_2018[2])
+)
+
+print(tabla_comparativa)
+```
+Por lo cual se emplea modelsummary en lugar de stargazer para mayor flexibilidad con modelos robustos.
+
+```{r}
+library(modelsummary)
+modelsummary(list(
+  "LM 2010" = modelo_lineal_2010,
+  "RLM 2010" = modelo_robusto_2010,
+  "LM 2018" = modelo_lineal_2018,
+  "RLM 2018" = modelo_robusto_2018
+), fmt = 3)
+
+```
+Se observa para el 2010 que el intercepto del modelo rlm (-2.299 vs -1.972	[lm]) es ligeramente más negativo, pero no hay diferencias sustanciales, esto implica que la relación entre la penetración de Internet y Facebook es similar en ambos modelos, lo que sugiere que los outliers en 2010 no tuvieron un impacto significativo en el modelo lineal. 
+
+Respecto a las pendientes 2010 la pendiente del modelo rlm es prácticamente idéntica a la del lm (0.446 | 0.439 [lm]), con un error estándar ligeramente menor; en 2018 a pendiente del rlm es prácticamente igual a la del lm (0.723 vs 0.720), con errores estándar similares (0.083) | (0.084).En el 2018 se reduce la magnitud negativa del intercepto de (-3.920 a -3.055), acercándose más a cero el modelo rlm corrige levemente el intercepto, pero la relación entre las variables se mantiene estable lo que indica que los outliers en 2018 tampoco distorsionan drásticamente el modelo lineal. 
+
+En resumen, el modelo RLM aunque corrige levemente el intercepto en 2018, no hay cambios drásticos en la pendiente ni en el ajuste global respecto al modelo LM, lo que sugiere que la relación entre las variables. Se recomienda saber escoger de forma correcta entre estos 2 modelos, de acuerdo al enfoque del estudio para el caso al buscar minimizar el impacto de outliers y priorizar la robustez se escoge el rlm, a pesar de no reportar valores R2 como el lm que es más interpretable. 
+
+
+
+## TAREA 1.7.
+Propón un valor imputado para el missing observado en Taiwán en la variable Internet_por_num a partir de los modelos analizados u otro modelo nuevo ajustado a tal efecto.
+
+
+Se utilizo la mediana como método para sustituir missing faltante para el año 2010, en este caso el dato de Taiwán al tener características específicas teniendo en cuenta que la mediana global podría subestimar su valor, se calcula la mediana solo para países similares asiáticos para mayor precisión. No se utilizó la media porque es susceptible a la presencia de valores extremos,el valor imputado de 71.5% para Taiwán en 2010 se puede considerar aceptable dado que el valor real de 2018 es 88% ; se intentó emplear el modelo lm pero nos genera un error en el código. 
+
+
+```{r}
+# Filtrar datos para 2010 y eliminar valores inconsistentes
+datos_2010 <- df_fb %>%
+  filter(anyo == 2010 & Internet_por_num > 0)
+
+# Calcular mediana global para 2010
+mediana_internet_2010 <- median(datos_2010$Internet_por_num, na.rm = TRUE)
+
+# Calcular mediana para países asiáticos en 2010
+paises_asia_2010 <- datos_2010 %>%
+  filter(pais_r %in% c("China", "Japan", "South Korea", "Hong Kong SAR, China", "Singapore"))
+
+mediana_internet_asia_2010 <- median(paises_asia_2010$Internet_por_num, na.rm = TRUE)
+
+# Mostrar resultados
+print(paste("Imputación usando MEDIANA global de 2010:", round(mediana_internet_2010, 2)))
+print(paste("Imputación usando MEDIANA de países asiáticos en 2010:", round(mediana_internet_asia_2010, 2)))
+
+# Imputar el valor en el dataframe original
+df_fb$Internet_por_num[df_fb$pais_r == "Taiwan" & df_fb$anyo == 2010] <- mediana_internet_asia_2010
+
+# Verificar el resultado
+df_fb %>% filter(pais_r == "Taiwan" & anyo == 2010)
+```
+
+## TAREA 1.8.
+Explica de qué forma puede ayudar el uso del Bootstrap (muestreo aleatorio simple con reemplazo) al proceso de imputación de valores faltantes como el que has propuesto en el punto anterior.
+
+```{r}
+library(boot)
+
+# Ejemplo de Bootstrap para la mediana de países asiáticos
+set.seed(123)
+resultados_bootstrap <- boot(data = paises_asia_2010$Internet_por_num, 
+                             statistic = function(data, i) median(data[i], na.rm = TRUE), 
+                             R = 1000)
+intervalo_confianza <- boot.ci(resultados_bootstrap, type = "perc")$percent[4:5]
+print(paste("Intervalo de confianza Bootstrap (95%):", round(intervalo_confianza, 2)))
+
+```
+
+El uso del Bootstrap ayuda a mejorar la precisión  al considerar la variabilidad natural de los datos, sus ventajas son la robustez ante la presencia de outliers. 
+
+La mediana de países asiáticos en 2010 (71.5%) podría subestimar el valor real de Taiwán, ya que países como China (con restricciones a Facebook) o Indonesia (con baja penetración de internet en 2010) pueden distorsionar la mediana. El Bootstrap genera múltiples muestras aleatorias de los países asiáticos, excluyendo casos extremos en cada iteración. Esto produce un intervalo más realista: 71%–78.21%.
